@@ -7,8 +7,14 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Create a pg pool
+// Create a pg pool
+const isProduction = process.env.NODE_ENV === "production" || (process.env.DATABASE_URL || "").includes("render.com");
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  // In production (Render) enable TLS but do not require strict certificate checking
+  // This avoids errors with managed DB providers that use trusted certs.
+  ...(isProduction ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
 // Bind drizzle to the pool
