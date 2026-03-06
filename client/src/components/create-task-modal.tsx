@@ -36,32 +36,31 @@ export function CreateTaskModal({
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    assigneeId: "",
-    dueDate: "",
+    assignee_ids: [] as number[],
+    parent_id: "" as string | number,
+    deadline: "",
     priority: "medium",
-    status: "to-do",
+    status: "todo",
   });
 
-  // Fetch all users from backend
-  const { data: allUsers } = useQuery({
-    queryKey: ["/api/users"],
-    queryFn: async () => {
-      const res = await fetch(`/api/users`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch users");
-      return res.json();
-    },
+  // Fetch all members of this project
+  const { data: members } = useQuery({
+    queryKey: [`/projects/${projectId}/members`],
     enabled: open,
   });
 
-  // Debugging: check the shape of API response
-  console.log("allUsers:", allUsers);
+  // Fetch all tasks of this project to select a parent
+  const { data: tasks } = useQuery({
+    queryKey: [`/projects/${projectId}/tasks/`],
+    enabled: open,
+  });
 
   const createTaskMutation = useMutation({
     mutationFn: (taskData: any) =>
-      apiRequest("POST", "/api/tasks", taskData),
+      apiRequest("POST", `/projects/${projectId}/tasks/`, taskData),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["/api/projects", projectId, "tasks"],
+        queryKey: [`/projects/${projectId}/tasks/`],
       });
       onSuccess?.("Task created successfully");
       resetForm();
@@ -73,10 +72,11 @@ export function CreateTaskModal({
     setFormData({
       title: "",
       description: "",
-      assigneeId: "",
-      dueDate: "",
+      assignee_ids: [],
+      parent_id: "",
+      deadline: "",
       priority: "medium",
-      status: "to-do",
+      status: "todo",
     });
   };
 
@@ -84,16 +84,16 @@ export function CreateTaskModal({
     e.preventDefault();
     if (!formData.title.trim()) return;
 
-    const taskData = {
+    const taskData: any = {
       title: formData.title,
       description: formData.description || null,
-      projectId,
-      assigneeId: formData.assigneeId || null,
       status: formData.status,
       priority: formData.priority,
-      dueDate: formData.dueDate
-        ? new Date(formData.dueDate).toISOString()
+      deadline: formData.deadline
+        ? new Date(formData.deadline).toISOString()
         : null,
+      assignee_ids: formData.assignee_ids.length > 0 ? formData.assignee_ids : [],
+      parent_id: formData.parent_id ? Number(formData.parent_id) : null,
     };
 
     createTaskMutation.mutate(taskData);
@@ -151,45 +151,75 @@ export function CreateTaskModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Assignee
+                Assignees
+              </label>
+              <div className="flex flex-wrap gap-2 p-3 bg-secondary/30 rounded-xl border border-border min-h-[44px]">
+                {(members as any[])?.length > 0 ? (
+                  (members as any[]).map((m: any) => (
+                    <label key={m.user_id} className="flex items-center gap-1.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={formData.assignee_ids.includes(m.user_id)}
+                        onChange={(e) => {
+                          const ids = e.target.checked 
+                            ? [...formData.assignee_ids, m.user_id]
+                            : formData.assignee_ids.filter(id => id !== m.user_id);
+                          setFormData({ ...formData, assignee_ids: ids });
+                        }}
+                        className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/20"
+                      />
+                      <span className="text-[10px] font-bold text-muted-foreground group-hover:text-foreground transition-colors uppercase">
+                        {m.user?.username}
+                      </span>
+                    </label>
+                  ))
+                ) : (
+                  <span className="text-[10px] text-muted-foreground italic">No members found</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Parent Task (for Nested)
               </label>
               <Select
-                value={formData.assigneeId || "unassigned"}
+                value={String(formData.parent_id)}
                 onValueChange={(value) =>
                   setFormData({
                     ...formData,
-                    assigneeId: value === "unassigned" ? "" : value,
+                    parent_id: value === "none" ? "" : value,
                   })
                 }
               >
-                <SelectTrigger data-testid="select-assignee">
-                  <SelectValue placeholder="Select assignee" />
+                <SelectTrigger>
+                  <SelectValue placeholder="Standalone Task" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {(allUsers as any[])?.map((user: any) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.fullName || user.name || user.email}
+                <SelectContent className="max-h-60">
+                  <SelectItem value="none">Standalone (No Parent)</SelectItem>
+                  {(tasks as any[])?.filter(t => !t.parent_id).map((task: any) => (
+                    <SelectItem key={task.id} value={String(task.id)}>
+                      {task.title}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Due Date
-              </label>
-              <Input
-                type="date"
-                value={formData.dueDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, dueDate: e.target.value })
-                }
-                data-testid="input-due-date"
-              />
-            </div>
           </div>
+
+          <div>
+             <label className="block text-sm font-medium text-foreground mb-2">
+               Deadline
+             </label>
+             <Input
+               type="date"
+               value={formData.deadline}
+               onChange={(e) =>
+                 setFormData({ ...formData, deadline: e.target.value })
+               }
+               data-testid="input-due-date"
+             />
+           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -227,8 +257,8 @@ export function CreateTaskModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="to-do">To Do</SelectItem>
-                  <SelectItem value="in-progress">In Progress</SelectItem>
+                  <SelectItem value="todo">To Do</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
                   <SelectItem value="done">Done</SelectItem>
                 </SelectContent>
               </Select>

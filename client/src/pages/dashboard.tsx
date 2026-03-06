@@ -1,180 +1,170 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { Plus, Folder, CheckCircle2, Clock, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Notification } from "@/components/ui/notification";
+import { useAuth } from "@/contexts/auth-context";
+import { useState } from "react";
 import { ProjectCard } from "@/components/project-card";
 import { CreateProjectModal } from "@/components/create-project-modal";
+import { Plus, FolderKanban, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 
-export default function Dashboard() {
-  const [, setLocation] = useLocation();
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: "success" | "error" | "info";
-  } | null>(null);
+const container = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.07 } },
+};
+const item = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
+};
+
+export function Dashboard() {
+  const { user } = useAuth();
+  const [showCreateProject, setShowCreateProject] = useState(false);
 
   const { data: projects, isLoading } = useQuery({
-    queryKey: ["/api/projects"],
+    queryKey: ["/projects/"],
+    enabled: !!user,
   });
 
-  const showNotification = (message: string, type: "success" | "error" | "info") => {
-    setNotification({ message, type });
-  };
+  const projectList = (projects as any[]) || [];
 
-  const hideNotification = () => {
-    setNotification(null);
-  };
+  const stats = [
+    {
+      label: "Projects",
+      value: projectList.length,
+      icon: FolderKanban,
+      gradient: "from-violet-500 to-purple-600",
+      bgLight: "bg-violet-500/10",
+      textColor: "text-violet-600 dark:text-violet-400",
+    },
+    {
+      label: "Active",
+      value: projectList.length,
+      icon: Clock,
+      gradient: "from-blue-500 to-cyan-500",
+      bgLight: "bg-blue-500/10",
+      textColor: "text-blue-600 dark:text-blue-400",
+    },
+    {
+      label: "Completed",
+      value: 0,
+      icon: CheckCircle2,
+      gradient: "from-emerald-500 to-teal-500",
+      bgLight: "bg-emerald-500/10",
+      textColor: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      label: "Overdue",
+      value: 0,
+      icon: AlertTriangle,
+      gradient: "from-amber-500 to-orange-500",
+      bgLight: "bg-amber-500/10",
+      textColor: "text-amber-600 dark:text-amber-400",
+    },
+  ];
 
-  const handleProjectClick = (projectId: string) => {
-    setLocation(`/projects/${projectId}`);
-  };
-
-  // Calculate dashboard stats
-  const stats = {
-    total: (projects as any[])?.length || 0,
-    active: (projects as any[])?.filter((p: any) => p.status === "active")?.length || 0,
-    pending: (projects as any[])?.filter((p: any) => p.status === "planning")?.length || 0,
-    totalMembers: (projects as any[])?.reduce((acc: number, p: any) => acc + p.memberCount, 0) || 0,
-  };
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse">
+              <div className="h-8 bg-muted rounded mb-3" />
+              <div className="h-4 bg-muted rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse">
+              <div className="h-4 bg-muted rounded mb-3" />
+              <div className="h-3 bg-muted rounded w-2/3 mb-2" />
+              <div className="h-3 bg-muted rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6" data-testid="dashboard-page">
-      {notification && (
-        <Notification
-          message={notification.message}
-          type={notification.type}
-          onClose={hideNotification}
-        />
-      )}
-
-      <CreateProjectModal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={(message) => showNotification(message, "success")}
-      />
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
+      {/* Header */}
+      <motion.div variants={item} className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground" data-testid="dashboard-title">
-            Projects
-          </h2>
-          <p className="text-muted-foreground">
-            Manage your team projects and collaboration
+          <h1 className="text-2xl font-bold text-foreground">
+            Welcome, {user?.username}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {projectList.length > 0
+              ? `You have ${projectList.length} project${projectList.length > 1 ? "s" : ""}`
+              : "Get started by creating your first project"}
           </p>
         </div>
         <Button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2"
+          onClick={() => setShowCreateProject(true)}
+          className="bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30 transition-all"
           data-testid="button-new-project"
         >
-          <Plus className="w-4 h-4" />
-          <span>New Project</span>
+          <Plus className="w-4 h-4 mr-1.5" />
+          New Project
         </Button>
-      </div>
+      </motion.div>
 
-      {/* Project Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-              <Folder className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground" data-testid="stat-total-projects">
-                {stats.total}
-              </p>
-              <p className="text-sm text-muted-foreground">Total Projects</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground" data-testid="stat-active-projects">
-                {stats.active}
-              </p>
-              <p className="text-sm text-muted-foreground">Active</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground" data-testid="stat-pending-projects">
-                {stats.pending}
-              </p>
-              <p className="text-sm text-muted-foreground">Planning</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground" data-testid="stat-total-members">
-                {stats.totalMembers}
-              </p>
-              <p className="text-sm text-muted-foreground">Team Members</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Projects Grid */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-card border border-border rounded-lg p-6 animate-pulse">
-              <div className="w-12 h-12 bg-muted rounded-lg mb-4"></div>
-              <div className="h-5 bg-muted rounded mb-2"></div>
-              <div className="h-4 bg-muted rounded mb-4"></div>
-              <div className="flex justify-between mb-4">
-                <div className="h-4 bg-muted rounded w-24"></div>
-                <div className="h-4 bg-muted rounded w-16"></div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, i) => (
+          <motion.div
+            key={stat.label}
+            variants={item}
+            className="bg-card border border-border rounded-2xl p-4 relative overflow-hidden group hover:shadow-md transition-shadow"
+          >
+            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${stat.gradient}`} />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">{stat.label}</p>
               </div>
-              <div className="h-2 bg-muted rounded"></div>
+              <div className={`w-9 h-9 ${stat.bgLight} rounded-xl flex items-center justify-center`}>
+                <stat.icon className={`w-4 h-4 ${stat.textColor}`} />
+              </div>
             </div>
-          ))}
-        </div>
-      ) : projects && (projects as any[]).length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="projects-grid">
-          {(projects as any[]).map((project: any) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onClick={() => handleProjectClick(project.id)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12" data-testid="empty-projects-state">
-          <Folder className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-foreground mb-2">No Projects Yet</h3>
-          <p className="text-muted-foreground mb-6">
-            Create your first project to get started with team collaboration
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Projects */}
+      {projectList.length === 0 ? (
+        <motion.div
+          variants={item}
+          className="text-center py-16 bg-card border border-border rounded-2xl"
+        >
+          <FolderKanban className="w-14 h-14 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">No Projects Yet</h3>
+          <p className="text-muted-foreground text-sm mb-6 max-w-md mx-auto">
+            Create your first project to start managing tasks and collaborating with your team.
           </p>
           <Button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2"
+            onClick={() => setShowCreateProject(true)}
+            className="bg-gradient-to-r from-violet-500 to-blue-500 text-white"
           >
-            <Plus className="w-4 h-4" />
-            Create Your First Project
+            <Plus className="w-4 h-4 mr-1.5" />
+            Create Project
           </Button>
+        </motion.div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {projectList.map((project: any) => (
+            <motion.div key={project.id} variants={item}>
+              <ProjectCard project={project} />
+            </motion.div>
+          ))}
         </div>
       )}
-    </div>
+
+      <CreateProjectModal
+        open={showCreateProject}
+        onClose={() => setShowCreateProject(false)}
+      />
+    </motion.div>
   );
 }

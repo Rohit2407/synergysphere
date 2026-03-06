@@ -6,15 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Search, UserPlus, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/axios";
 
 interface User {
-  id: string;
-  fullName: string;
-  email: string;
+  id: number;
   username: string;
+  email: string;
 }
 
 interface UserSearchModalProps {
@@ -27,34 +26,31 @@ interface UserSearchModalProps {
 
 export function UserSearchModal({ open, onClose, projectId, projectName, onSuccess }: UserSearchModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [invitedUsers, setInvitedUsers] = useState<Set<string>>(new Set());
+  const [selectedRole, setSelectedRole] = useState("employee");
+  const [invitedUsers, setInvitedUsers] = useState<Set<number>>(new Set());
   const { toast } = useToast();
 
   const { data: searchResults, isLoading: isSearching } = useQuery({
-  queryKey: ["/api/users/search", searchQuery],
-  queryFn: async () => {
-    if (searchQuery.length < 2) return [];
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`, {
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Failed to search users");
-    return res.json();
-  },
-  enabled: searchQuery.length >= 2,
-});
-
+    queryKey: ["/users/search", searchQuery],
+    queryFn: async () => {
+      if (searchQuery.length < 2) return [];
+      const res = await api.get(`/users/search?q=${encodeURIComponent(searchQuery)}`);
+      return res.data;
+    },
+    enabled: searchQuery.length >= 2,
+  });
 
   const { data: currentMembers } = useQuery({
-    queryKey: [`/api/projects/${projectId}/members`],
+    queryKey: [`/projects/${projectId}/members`],
     enabled: !!projectId,
   });
 
   const inviteUserMutation = useMutation({
-    mutationFn: (userData: { userId: string; role: string }) => 
-      apiRequest("POST", `/api/projects/${projectId}/members`, userData),
-    onSuccess: (_, { userId }) => {
-      setInvitedUsers(prev => new Set(prev).add(userId));
-      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/members`] });
+    mutationFn: (userData: { user_id: number; role: string; project_id: number }) =>
+      apiRequest("POST", `/projects/${projectId}/members`, userData),
+    onSuccess: (_, { user_id }) => {
+      setInvitedUsers(prev => new Set(prev).add(user_id));
+      queryClient.invalidateQueries({ queryKey: [`/projects/${projectId}/members`] });
       onSuccess?.("User invited successfully");
     },
     onError: () => {
@@ -66,36 +62,32 @@ export function UserSearchModal({ open, onClose, projectId, projectName, onSucce
     },
   });
 
-  // Reset state when modal opens/closes
   useEffect(() => {
     if (!open) {
       setSearchQuery("");
+      setSelectedRole("employee");
       setInvitedUsers(new Set());
     }
   }, [open]);
 
   const handleClose = () => {
     setSearchQuery("");
+    setSelectedRole("employee");
     setInvitedUsers(new Set());
     onClose();
   };
 
-  const handleInviteUser = (userId: string) => {
-    inviteUserMutation.mutate({ userId, role: "member" });
+  const handleInviteUser = (userId: number) => {
+    inviteUserMutation.mutate({
+      user_id: userId,
+      role: selectedRole,
+      project_id: parseInt(projectId),
+    });
   };
 
-  const users = searchResults as User[] || [];
-  const members = currentMembers as any[] || [];
-  const memberIds = new Set(members.map(m => m.userId));
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
+  const users = (searchResults as User[]) || [];
+  const members = (currentMembers as any[]) || [];
+  const memberUserIds = new Set(members.map(m => m.user_id));
 
   if (!open) return null;
 
@@ -110,40 +102,48 @@ export function UserSearchModal({ open, onClose, projectId, projectName, onSucce
         </DialogHeader>
 
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Search Input */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Search by name, username, or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-              data-testid="input-user-search"
-            />
+          <div className="flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search by username or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-10"
+                data-testid="input-user-search"
+              />
+            </div>
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className="bg-secondary border border-border rounded-xl px-3 text-sm font-medium focus:ring-0 outline-none h-10 min-w-[140px]"
+            >
+              <option value="manager">Manager</option>
+              <option value="project_manager">Project Manager</option>
+              <option value="employee">Employee</option>
+              <option value="stakeholder">Stakeholder</option>
+            </select>
           </div>
 
-          {/* Search Results */}
           <div className="flex-1 overflow-y-auto">
             {searchQuery.length < 2 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Type at least 2 characters to search for users</p>
+                <p>Type at least 2 characters to search</p>
               </div>
             ) : isSearching ? (
               <div className="space-y-3">
-                {[...Array(4)].map((_, i) => (
-                  <Card key={i} className="animate-pulse">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-gray-200 rounded w-32 mb-1"></div>
-                          <div className="h-3 bg-gray-200 rounded w-48"></div>
-                        </div>
-                        <div className="w-20 h-8 bg-gray-200 rounded"></div>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="bg-card border border-border rounded-xl p-4 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-muted rounded-full" />
+                      <div className="flex-1">
+                        <div className="h-4 bg-muted rounded w-28 mb-1" />
+                        <div className="h-3 bg-muted rounded w-40" />
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div className="w-16 h-8 bg-muted rounded" />
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : users.length === 0 ? (
@@ -152,76 +152,68 @@ export function UserSearchModal({ open, onClose, projectId, projectName, onSucce
                 <p>No users found matching "{searchQuery}"</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {users.map((user) => {
-                  const isAlreadyMember = memberIds.has(user.id);
+                  const isAlreadyMember = memberUserIds.has(user.id);
                   const isInvited = invitedUsers.has(user.id);
-                  
-                  return (
-                    <Card key={user.id} className={`transition-all ${
-                      isAlreadyMember ? 'opacity-50' : 'hover:shadow-md'
-                    }`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-10 h-10">
-                            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                              {getInitials(user.fullName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium truncate">{user.fullName}</h4>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className="truncate">@{user.username}</span>
-                              <span>•</span>
-                              <span className="truncate">{user.email}</span>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-2">
-                            {isAlreadyMember ? (
-                              <Badge variant="secondary">Member</Badge>
-                            ) : isInvited ? (
-                              <Badge variant="default" className="bg-green-100 text-green-800">
-                                <Check className="w-3 h-3 mr-1" />
-                                Invited
-                              </Badge>
-                            ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => handleInviteUser(user.id)}
-                                disabled={inviteUserMutation.isPending}
-                                data-testid={`button-invite-${user.id}`}
-                              >
-                                <UserPlus className="w-4 h-4 mr-1" />
-                                Invite
-                              </Button>
-                            )}
-                          </div>
+                  return (
+                    <div
+                      key={user.id}
+                      className={`bg-card border border-border rounded-xl p-3 transition-all ${
+                        isAlreadyMember ? "opacity-50" : "hover:shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-gradient-to-tr from-violet-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0">
+                          {user.username.substring(0, 2).toUpperCase()}
                         </div>
-                      </CardContent>
-                    </Card>
+
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-foreground text-sm truncate">{user.username}</h4>
+                          <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isAlreadyMember ? (
+                            <Badge variant="secondary" className="text-xs">Member</Badge>
+                          ) : isInvited ? (
+                            <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
+                              <Check className="w-3 h-3 mr-1" />
+                              Added
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleInviteUser(user.id)}
+                              disabled={inviteUserMutation.isPending}
+                              data-testid={`button-invite-${user.id}`}
+                              className="text-xs h-7"
+                            >
+                              <UserPlus className="w-3 h-3 mr-1" />
+                              Invite
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="flex justify-between items-center pt-4 mt-4 border-t">
-            <div className="text-sm text-muted-foreground">
+          <div className="flex justify-between items-center pt-3 mt-3 border-t border-border">
+            <div className="text-xs text-muted-foreground">
               {invitedUsers.size > 0 && (
-                <span className="text-green-600">
-                  {invitedUsers.size} user{invitedUsers.size !== 1 ? 's' : ''} invited
+                <span className="text-emerald-600">
+                  {invitedUsers.size} user{invitedUsers.size !== 1 ? "s" : ""} invited
                 </span>
               )}
             </div>
-            
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleClose} data-testid="button-close">
-                Close
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={handleClose} data-testid="button-close">
+              Close
+            </Button>
           </div>
         </div>
       </DialogContent>

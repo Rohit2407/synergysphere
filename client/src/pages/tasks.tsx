@@ -1,251 +1,184 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CheckSquare, Clock, AlertCircle } from "lucide-react";
+import { CheckSquare, Clock, AlertCircle, Zap } from "lucide-react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
+
+const container = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.06 } },
+};
+const item = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
+};
 
 interface Task {
-  id: string;
+  id: number;
   title: string;
   description?: string;
-  status: "to-do" | "in-progress" | "done";
+  status: "todo" | "in_progress" | "done";
   priority: "low" | "medium" | "high";
-  dueDate?: string;
-  projectId: string;
-  project: {
-    name: string;
-    icon: string;
-  };
+  deadline?: string;
+  project_id: number;
+  assignee_id?: number;
+  created_at: string;
 }
 
-function getPriorityColor(priority: string) {
+function getPriorityStyle(priority: string) {
   switch (priority) {
-    case "high": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
-    case "medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
-    case "low": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-    default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "high": return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20";
+    case "medium": return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
+    case "low": return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
+    default: return "bg-secondary text-muted-foreground border-border";
   }
 }
 
-function getStatusColor(status: string) {
+function getStatusLabel(status: string) {
   switch (status) {
-    case "done": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-    case "in-progress": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
-    case "to-do": return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
-    default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "todo": return "To Do";
+    case "in_progress": return "In Progress";
+    case "done": return "Done";
+    default: return status;
   }
+}
+
+function getStatusDot(status: string) {
+  switch (status) {
+    case "todo": return "bg-slate-400";
+    case "in_progress": return "bg-amber-500";
+    case "done": return "bg-emerald-500";
+    default: return "bg-slate-400";
+  }
+}
+
+function TaskItem({ task }: { task: Task }) {
+  return (
+    <motion.div
+      variants={item}
+      whileHover={{ y: -2 }}
+      className="bg-card border border-border rounded-xl p-4 hover:shadow-md transition-all cursor-pointer group"
+    >
+      <div className="flex justify-between items-start gap-2 mb-2">
+        <h4 className="font-medium text-foreground text-sm line-clamp-2 group-hover:text-primary transition-colors">
+          {task.title}
+        </h4>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap ${getPriorityStyle(task.priority)}`}>
+          {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+        </span>
+      </div>
+      {task.description && (
+        <p className="text-muted-foreground text-[11px] mb-3 line-clamp-1">{task.description}</p>
+      )}
+      <div className="flex items-center justify-between pt-2 border-t border-border">
+        <div className="flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full ${getStatusDot(task.status)}`} />
+          <span className="text-[10px] font-medium text-muted-foreground">{getStatusLabel(task.status)}</span>
+        </div>
+        {task.deadline && (
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
+            <AlertCircle className="w-3 h-3" />
+            <span>{format(new Date(task.deadline), "MMM dd")}</span>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
 }
 
 export function Tasks() {
   const { user } = useAuth();
   
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ["/api/user/tasks"],
+    queryKey: ["/users/me/tasks"],
     enabled: !!user,
   });
 
+  const taskList = (tasks as Task[]) || [];
+  const todoTasks = taskList.filter(t => t.status === "todo");
+  const inProgressTasks = taskList.filter(t => t.status === "in_progress");
+  const doneTasks = taskList.filter(t => t.status === "done");
+
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-6">
-          <CheckSquare className="w-6 h-6" />
-          <h1 className="text-2xl font-bold">My Tasks</h1>
+      <div className="space-y-5">
+        <div className="flex items-center gap-3 bg-card border border-border p-5 rounded-2xl">
+          <CheckSquare className="w-5 h-5 text-foreground" />
+          <h1 className="text-xl font-bold text-foreground">My Tasks</h1>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="h-3 bg-gray-200 rounded"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="space-y-3">
+              <div className="h-8 bg-card border border-border rounded-xl animate-pulse" />
+              <div className="bg-card border border-border rounded-xl p-4 animate-pulse">
+                <div className="h-4 bg-muted rounded mb-2" />
+                <div className="h-3 bg-muted rounded w-2/3" />
+              </div>
+            </div>
           ))}
         </div>
       </div>
     );
   }
 
-  const taskList = tasks as Task[] || [];
-  const todoTasks = taskList.filter(t => t.status === "to-do");
-  const inProgressTasks = taskList.filter(t => t.status === "in-progress");
-  const doneTasks = taskList.filter(t => t.status === "done");
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 mb-6">
-        <CheckSquare className="w-6 h-6" />
-        <h1 className="text-2xl font-bold">My Tasks</h1>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* To Do Column */}
+    <motion.div variants={container} initial="hidden" animate="show" className="space-y-5">
+      <motion.div variants={item} className="flex items-center gap-3 bg-card border border-border p-5 rounded-2xl shadow-sm">
+        <div className="w-9 h-9 bg-blue-500/10 dark:bg-blue-500/20 rounded-xl flex items-center justify-center">
+          <CheckSquare className="w-4 h-4 text-blue-500" />
+        </div>
         <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-gray-500" />
-            To Do ({todoTasks.length})
-          </h2>
-          <div className="space-y-3">
-            {todoTasks.map((task) => (
-              <Card key={task.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">{task.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={getPriorityColor(task.priority)}>
-                          {task.priority}
-                        </Badge>
-                        <Badge variant="outline" className={getStatusColor(task.status)}>
-                          {task.status.replace("-", " ")}
-                        </Badge>
-                      </div>
-                    </div>
+          <h1 className="text-xl font-bold text-foreground">My Tasks</h1>
+          <p className="text-xs text-muted-foreground">{taskList.length} task{taskList.length !== 1 ? 's' : ''} assigned to you</p>
+        </div>
+      </motion.div>
 
-                    {task.dueDate && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <AlertCircle className="w-3 h-3" />
-                        Due {format(new Date(task.dueDate), "MMM d")}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <i className={task.project.icon + " w-3 h-3"} />
-                      {task.project.name}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {todoTasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No tasks to do
-              </p>
-            )}
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* To Do */}
+        <div className="space-y-3">
+          <motion.div variants={item} className="flex items-center justify-between bg-card border border-border px-3 py-2 rounded-xl">
+            <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+              <Clock className="w-4 h-4 text-slate-400" /> To Do
+            </h4>
+            <span className="bg-secondary text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded">{todoTasks.length}</span>
+          </motion.div>
+          {todoTasks.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">No tasks to do</p>
+          ) : (
+            todoTasks.map(task => <TaskItem key={task.id} task={task} />)
+          )}
         </div>
 
-        {/* In Progress Column */}
-        <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <div className="w-5 h-5 rounded-full bg-blue-500"></div>
-            In Progress ({inProgressTasks.length})
-          </h2>
-          <div className="space-y-3">
-            {inProgressTasks.map((task) => (
-              <Card key={task.id} className="hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">{task.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={getPriorityColor(task.priority)}>
-                          {task.priority}
-                        </Badge>
-                        <Badge variant="outline" className={getStatusColor(task.status)}>
-                          {task.status.replace("-", " ")}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {task.dueDate && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <AlertCircle className="w-3 h-3" />
-                        Due {format(new Date(task.dueDate), "MMM d")}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <i className={task.project.icon + " w-3 h-3"} />
-                      {task.project.name}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {inProgressTasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No tasks in progress
-              </p>
-            )}
-          </div>
+        {/* In Progress */}
+        <div className="space-y-3">
+          <motion.div variants={item} className="flex items-center justify-between bg-card border border-border px-3 py-2 rounded-xl">
+            <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" /> In Progress
+            </h4>
+            <span className="bg-secondary text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded">{inProgressTasks.length}</span>
+          </motion.div>
+          {inProgressTasks.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">No tasks in progress</p>
+          ) : (
+            inProgressTasks.map(task => <TaskItem key={task.id} task={task} />)
+          )}
         </div>
 
-        {/* Done Column */}
-        <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-green-500" />
-            Done ({doneTasks.length})
-          </h2>
-          <div className="space-y-3">
-            {doneTasks.map((task) => (
-              <Card key={task.id} className="hover:shadow-md transition-shadow border-l-4 border-l-green-500 opacity-75">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium line-through">{task.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={getPriorityColor(task.priority)}>
-                          {task.priority}
-                        </Badge>
-                        <Badge variant="outline" className={getStatusColor(task.status)}>
-                          {task.status.replace("-", " ")}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {task.dueDate && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <AlertCircle className="w-3 h-3" />
-                        Due {format(new Date(task.dueDate), "MMM d")}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <i className={task.project.icon + " w-3 h-3"} />
-                      {task.project.name}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {doneTasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No completed tasks
-              </p>
-            )}
-          </div>
+        {/* Done */}
+        <div className="space-y-3">
+          <motion.div variants={item} className="flex items-center justify-between bg-card border border-border px-3 py-2 rounded-xl">
+            <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+              <CheckSquare className="w-4 h-4 text-emerald-500" /> Done
+            </h4>
+            <span className="bg-secondary text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded">{doneTasks.length}</span>
+          </motion.div>
+          {doneTasks.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">No completed tasks</p>
+          ) : (
+            doneTasks.map(task => <TaskItem key={task.id} task={task} />)
+          )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
