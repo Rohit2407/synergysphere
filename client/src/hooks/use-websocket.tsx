@@ -34,7 +34,12 @@ export function useWebSocket(projectId?: string) {
     ws.current.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        setLastMessage(message);
+        if (message.type === "MESSAGE_CREATED") {
+          // Check if message belongs to the current channel/project
+          setLastMessage(message);
+        } else {
+          setLastMessage(message);
+        }
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
       }

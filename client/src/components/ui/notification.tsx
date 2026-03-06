@@ -27,8 +27,8 @@ export function Notification({ message, type, onClose }: NotificationProps) {
   };
 
   const colors = {
-    success: "bg-green-500 text-white",
-    error: "bg-red-500 text-white",
+    success: "bg-green-500 text-foreground",
+    error: "bg-red-500 text-foreground",
     info: "bg-primary text-primary-foreground",
   };
 
